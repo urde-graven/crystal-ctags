@@ -1,10 +1,10 @@
 # Crystal Ctags
 
-[![Linux Build][travis-image]][travis-url]
-[![Shards version][shards-image]][shards-url]
-
-
 Tool for generation `ctags` for **Crystal**
+
+Fork of https://github.com/SuperPaintman/crystal-ctags with enough compatibility with Exuberant Ctags to make [Gutentags](https://github.com/ludovicchabant/vim-gutentags) and [CtrlP tjump](https://github.com/ivalkeen/vim-ctrlp-tjump) work. Needs https://github.com/urde-graven/crystal for compilation because upstream [Crystal](https://github.com/crystal-lang/crystal) has severe bugs in its OptionParser - this code is intentionally incompatible with it.
+
+![Screenshot Gutentags][screenshot-gutentags-image]
 
 ![Screenshot][screenshot-image]
 
@@ -47,12 +47,25 @@ $ make test
 --------------------------------------------------------------------------------
 
 ## Use with
+### VIM: Gutentags
+
+For example:
+```vim
+let g:gutentags_modules = ['ctags']
+let g:gutentags_file_list_command = 'absolute///ag -l -i --nocolor --hidden -g "" .'
+let g:gutentags_ctags_executable_crystal = "crystal-ctags"
+let g:gutentags_project_info = []
+call add(g:gutentags_project_info, {'type': 'crystal', 'file': 'main.cr'})
+call add(g:gutentags_project_info, {'type': 'crystal', 'file': 'shard.yml'})
+```
+
 ### VIM: TagBar
 
 ```vim
 let g:tagbar_type_crystal = {
     \'ctagstype': 'crystal',
     \'ctagsbin': 'crystalctags',
+    \'ctagsargs': '-f -',
     \'kinds': [
         \'c:classes',
         \'m:modules',
@@ -114,6 +127,7 @@ let g:tagbar_type_crystal = {
 [changelog-url]: CHANGELOG.md
 [docs-url]: https://superpaintman.github.io/crystalctags/
 [screenshot-image]: README/screenshot.png
+[screenshot-gutentags-image]: README/screenshot-gutentags.png
 [travis-image]: https://img.shields.io/travis/SuperPaintman/crystalctags/master.svg?label=linux
 [travis-url]: https://travis-ci.org/SuperPaintman/crystalctags
 [shards-image]: https://img.shields.io/github/tag/superpaintman/crystalctags.svg?label=shards

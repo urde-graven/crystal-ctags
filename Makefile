@@ -5,7 +5,7 @@ PREFIX ?= /usr/local
 all: clean build
 
 build:
-	$(CRYSTAL_BIN) deps
+	shards install
 	$(CRYSTAL_BIN) build --release -o bin/crystalctags src/crystal_ctags/bootstrap.cr $(CRFLAGS)
 
 clean:

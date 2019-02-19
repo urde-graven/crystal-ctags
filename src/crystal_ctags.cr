@@ -13,21 +13,27 @@ module CrystalCtags
     :fun    => "f",
   }
 
+  enum ExCmd
+    NUMBER
+    PATTERN
+    MIX
+  end
+
   class Tag
     @name : String
     @filename : String
-    @regex : String
+    @excmd : String
     @kind : Symbol
     @line : Int32?
     @scope : Array(String)?
     @signature : String?
     @type : String?
 
-    def initialize(@name, @filename, @regex, @kind, @line = nil, @scope = nil, @signature = nil, @type = nil)
+    def initialize(@name, @filename, @excmd, @kind, @line = nil, @scope = nil, @signature = nil, @type = nil)
     end
 
     def to_s(io)
-      io << @name << "\t" << @filename << "\t" << @regex << ";\"\t" << TAGS[@kind]
+      io << @name << "\t" << @filename << "\t" << @excmd << ";\"\t" << TAGS[@kind]
       io << "\tline:" << @line unless @line.nil?
       io << "\tnamespace:" << @scope.not_nil!.join(".") unless @scope.not_nil!.empty?
       io << "\tsignature:" << @signature unless @signature.nil?
@@ -36,21 +42,14 @@ module CrystalCtags
   end
 
   class CtagsVisitor < Crystal::Visitor
-    REPLACEMENTS = {
-      "(": "\\(",
-      ")": "\\)",
-      "[": "\\[",
-      "]": "\\]",
-      "{": "\\{",
-      "}": "\\}",
-    }
-
     getter tags
 
     @filename : String
     @content : String
+    @relative : Bool
+    @excmd : ExCmd
 
-    def initialize(@filename, @content)
+    def initialize(@filename, @content, @relative, @excmd)
       @tags = [] of CrystalCtags::Tag
       @scope = [] of String
     end
@@ -121,16 +120,16 @@ module CrystalCtags
 
       line_number = location.line_number
       line = @content.lines[line_number - 1]
-      regex = regexpize(line)
+      excmd = extcmdize(line, location)
 
-      tag = CrystalCtags::Tag.new(name, relativize(@filename), regex, kind, line_number, @scope.dup, signature)
+      tag = CrystalCtags::Tag.new(name, relativize(@filename), excmd, kind, line_number, @scope.dup, signature)
       @tags << tag
 
       true
     end
 
     def relativize(filename)
-      if filename.starts_with?(Dir.current)
+      if @relative && filename.starts_with?(Dir.current)
         filename = filename[Dir.current.size..-1]
         filename = filename[1..-1] if filename.starts_with?("/")
       end
@@ -138,19 +137,28 @@ module CrystalCtags
       filename
     end
 
+    def extcmdize(str : String, location)
+      case @excmd
+      when ExCmd::MIX
+        "#{location.line_number};/^#{regexpize(str)}$/"
+      when ExCmd::NUMBER
+        location.line_number.to_s
+      when ExCmd::PATTERN
+        "/^#{regexpize(str)}$/"
+      else
+        raise KeyError.new
+      end
+    end
+
     def regexpize(str : String)
-      str = str.gsub(/\r\n|\r|\n/, "")
-      str = str.gsub(/\(\)\[\]\{\}/, REPLACEMENTS)
-      "^#{str}$"
+      str.gsub(/\r\n|\r|\n/, "").gsub(/[\\\/$^]/, "\\\\\\0")
     end
   end
 
   class Ctags
-    getter tags
 
-    def initialize(filenames)
+    def initialize(filenames, @append = false, @relative = false, @excmd = ExCmd::NUMBER)
       @files = {} of String => String
-      @tags = [] of CrystalCtags::Tag
 
       filenames.map! do |filename|
         File.expand_path(filename)
@@ -159,27 +167,36 @@ module CrystalCtags
         content = File.read(filename)
         @files[filename] = content
       end
+    end
 
+    def parse
       @files.each do |filename, content|
-        visitor = CrystalCtags::CtagsVisitor.new(filename, content)
-        parser = Crystal::Parser.new(content)
-        parser.filename = filename
-        node = parser.parse
-        node.accept(visitor)
-
-        @tags += visitor.tags
+        begin
+          parser = Crystal::Parser.new(content)
+          parser.filename = filename
+          node = parser.parse
+          visitor = CrystalCtags::CtagsVisitor.new(filename, content, @relative, @excmd)
+          node.accept(visitor)
+          yield visitor.tags
+        rescue e : Crystal::SyntaxException
+          STDERR.puts "WARN: #{filename}:#{e.line_number}: #{e.message}"
+        end
       end
     end
 
     def to_s(io)
-      # Headers
-      io << "!_TAG_FILE_FORMAT 2 /extended format; --format=1 will not append ;\" to lines/\n"
-      io << "!_TAG_FILE_SORTED 0 /0=unsorted, 1=sorted, 2=foldcase/\n"
-      io << "!_TAG_PROGRAM_VERSION #{CrystalCtags::VERSION} //\n"
+      unless @append
+        # Headers
+        io << "!_TAG_FILE_FORMAT 2 /extended format; --format=1 will not append ;\" to lines/\n"
+        io << "!_TAG_FILE_SORTED 0 /0=unsorted, 1=sorted, 2=foldcase/\n"
+        io << "!_TAG_PROGRAM_VERSION #{CrystalCtags::VERSION} //\n"
+      end
 
       # Tags
-      @tags.each do |tag|
-        io << tag << "\n"
+      parse do |tags|
+        tags.each do |tag|
+          io << tag << "\n"
+        end
       end
     end
   end
